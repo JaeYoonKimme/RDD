@@ -54,10 +54,10 @@ pthread_mutex_lock (pthread_mutex_t *mutex)
 	int type = 1;
 	write_s(sizeof(type),(char*)&type, fd);
 
-	write_s(sizeof(mutex), (char*)&mutex, fd);
-
 	long tid = pthread_self();
 	write_s(sizeof(tid), (char*)tid, fd);
+	write_s(sizeof(mutex), (char*)&mutex, fd);
+
 
 	flock(fd, LOCK_UN) ;
 
@@ -100,9 +100,10 @@ pthread_mutex_unlock (pthread_mutex_t *mutex)
  	int type = 0;
  	write_s(sizeof(type),(char*)&type, fd);
  	
- 	write_s(sizeof(mutex), (char*)&mutex, fd);
  	long tid = pthread_self();
  	write_s(sizeof(tid), (char*)tid, fd);
+ 	
+	write_s(sizeof(mutex), (char*)&mutex, fd);
 
 	flock(fd, LOCK_UN) ;
 
