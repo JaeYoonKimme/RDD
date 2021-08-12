@@ -9,102 +9,222 @@
 #include <pthread.h>
 
 struct _node {
-	void * addr;
-	long tid;
-	struct _node* edge[9]; 
+	void * mutex; 
+	struct _node* next;
 	int visited;
-};
+};	
 
 typedef struct _node node;
-typedef struct _node * node_ptr;
 
-node_ptr list[10] = {0x0};
+struct _thread {
+	long tid;
+	int n_mutex;
+	node * mutex_list[100];
+};
 
-void *
-init_node(long tid, void * addr)
+typedef struct _thread thread;
+
+node * m_list[10] = { 0x0 };
+thread * t_list[10] = { 0x0 } ;
+
+thread *
+thread_chck(long tid)
 {
-	node_ptr tmp = (node_ptr) malloc(sizeof(node));
-	tmp -> addr = addr;
-	tmp -> tid = tid;
-	int visited = 0;
-	for(int i = 0; i<9; i++){
-		tmp -> edge[i] = 0x0;
+	thread * tmp = 0x0;
+	for(int i = 0; i < 10; i++){
+		if(t_list[i] != 0x0 && t_list[i] -> tid == tid){
+			tmp = t_list[i];
+			break;
+		}
 	}
 
+	if(tmp == 0x0){
+		for(int i = 0; i < 10; i++){
+			if(t_list[i] == 0x0){
+				tmp = (thread*) malloc(sizeof(thread));
+				tmp -> tid = tid;
+				tmp -> n_mutex = 0;
+				t_list[i] = tmp;
+				break;	
+			}
+		}
+	}
+	
 	return tmp;
+}	
+
+node *
+mutex_chck(void * mutex)
+{
+	node * tmp;
+	for(int i = 0; i < 10; i++){
+		if(m_list[i] != 0x0 && m_list[i] -> mutex == mutex){
+			return m_list[i];
+		}
+	}
+
+	for(int i = 0; i < 10; i++){
+		if(m_list[i] == 0x0){
+			tmp = (node*) malloc(sizeof(node));
+			tmp -> mutex = mutex;
+			tmp -> next = 0x0;
+			tmp -> visited = 0;
+			m_list[i] = tmp;
+			return tmp;
+		}
+	}
 }
 
 void
-print_list()
+print_thread_list()
 {
-	for(int i = 0; i < 10; i++){
-		if(list[i] != 0x0){
-			printf("list[%d]- tid : %ld, mutex_addr : %p\n",i,list[i]->tid,list[i]->addr);
-			
-			for(int j=0; j<9; j++){
-				if(list[i] -> edge[j] != 0x0){
-					node_ptr tmp = list[i] -> edge[j];
-					printf("edge %p %ld -> %p %ld\n", list[i]->addr, list[i]->tid, tmp->addr, tmp->tid);
-					
-				}
-			}
-		}	
+	printf("\n----------------print thread list--------------\n");
+
+	for(int i = 0; i< 10; i++){
+		if(t_list[i] != 0x0){
+			printf("thread %d : %ld\n",i, t_list[i] -> tid);
+		}
 	}
-	printf("\n");
+}
+
+void
+print_mutex_list()
+{
+	printf("\n---------------print mutex list----------------\n");
+
+	for(int i =0; i < 10; i++){
+		if(m_list[i] != 0x0){
+			printf("mutex %d : %p\n",i,m_list[i]->mutex);
+		}
+	}	
+}
+
+void
+print_graph()
+{
+	printf("-----------------print edge status--------------\n");
+	for(int i = 0; i < 10; i++){
+		if(m_list[i] != 0x0 && m_list[i] -> next != 0x0){
+			printf("edge %p -> %p \n", m_list[i] -> mutex , m_list[i] -> next -> mutex);
+		}
+	}
+}
+
+void
+make_edge(thread * cur_thread)
+{
+	if(cur_thread -> n_mutex > 0 && cur_thread -> mutex_list[cur_thread -> n_mutex - 1] != 0x0){
+		int start = cur_thread -> n_mutex - 1;
+		int end = cur_thread -> n_mutex;
+
+		cur_thread -> mutex_list[start] -> next = cur_thread -> mutex_list[end];
+	}	
+}
+
+void
+release(long tid, void* mutex)
+{
+	node * cur_node;
+	thread * cur_thread;
+	for(int i = 0; i< 10; i++){
+		if(t_list[i] != 0x0 && t_list[i] -> tid == tid){
+			cur_thread = t_list[i];
+		}
+		
+		if(m_list[i] != 0x0 && m_list[i] -> mutex == mutex){
+			cur_node = m_list[i];
+		}
+	}
+
+	for(int i = 0; i < cur_thread -> n_mutex ; i++){
+		if(cur_thread -> mutex_list[i] != 0x0 && cur_thread -> mutex_list[i] == cur_node){
+			if(i - 1 >= 0 && cur_thread -> mutex_list[i - 1] != 0x0){
+				cur_thread->mutex_list[i - 1] -> next = cur_thread -> mutex_list[i] -> next;
+			}
+				
+			cur_thread -> mutex_list[i] = 0x0;
+			cur_node -> next = 0x0;
+		}
+	}	
 }
 
 int
-check_list(void * addr)
+find_cycle(node * cur)
 {
-	for(int i = 0; i<10; i++){
-		if(list[i] != 0x0){
-			if(list[i] -> addr == addr){
-				return 1;
+	int found = 0;
+	int count = 0;
+
+	for(node * tmp = cur; tmp != 0x0; tmp = tmp -> next){
+		if(tmp -> visited == 1){
+			found = 1;
+			count += 1;
+			break;
+		}
+
+		else{
+			tmp -> visited = 1;
+		}
+	}
+
+	for(node * tmp = cur; tmp != 0x0; tmp = tmp -> next){
+		if(tmp -> visited == 1){
+			tmp -> visited = 0;
+			count -= 1;
+			
+			if(count == 0){
+				break;
 			}
 		}
 	}
-	return 0;
+	return found;
 }
 
 void
-make_edge(long tid, void* addr)
+check_deadlock()
 {
-	node_ptr end ;
-	for(int i = 0; i< 10; i++){
-		if(list[i] != 0x0 && list[i] -> addr == addr){
-			end = list[i];
+	for(int i = 0; i < 10; i++){
+		if(m_list[i] != 0x0 && find_cycle(m_list[i]) == 1){
+			printf("\n********Dead Lock Occured********\n");
+			//exit(1);
+			break;
 		}
-	}
-
-	for(int i = 0; i< 10; i++){
-		if(list[i] != 0x0 && list[i] -> tid == tid && list[i] -> addr != addr){
-			node_ptr start = list[i];
-			for(int j=0; j<9; j++){
-				if(start -> edge[j] == 0x0){
-					start -> edge[j] = end;
-					break;
-				}
-			}
-		}
-	}
+	}	
 }
 
-void
-update_list(int type,long tid, void * addr)
+void 
+update(int type, long tid, void* mutex)
 {
+	//LOCK
 	if(type == 1){
-		if(!check_list(addr)){
-			node_ptr new = init_node(tid,addr);		
-			for(int i = 0; i < 10; i++){
-				if(list[i] == 0x0){
-					list[i] = new;
-					break;
-				}
-			}
-		}
-		make_edge(tid, addr);	
-		print_list();
+		node * cur_node = mutex_chck(mutex);
+		thread * cur_thread = thread_chck(tid);
+		
+		cur_thread -> mutex_list[cur_thread->n_mutex] = cur_node;	
+		make_edge(cur_thread);	
+		cur_thread -> n_mutex += 1;	
+
+
+		printf("---------------------------------------------------------------------------\n");
+		printf("Given data set : [LOCK] %ld -> %p\n",tid,mutex);
+		print_thread_list();		
+		print_mutex_list();						
+		print_graph();
+		check_deadlock();
+		printf("---------------------------------------------------------------------------\n\n\n");
 	}
+
+	//UNLOCK
+	if(type == 0){
+		release(tid,mutex);
+
+
+		printf("---------------------------------------------------------------------------\n");
+		printf("Given data set : [UNLOCK] %ld -> %p\n",tid,mutex);
+		print_thread_list();
+		print_mutex_list();
+		print_graph();
+		printf("---------------------------------------------------------------------------\n\n\n");
+	}			
 }
 
 void
@@ -134,16 +254,14 @@ main()
 		void * addr = 0x0;
 		long tid = -1;
 		
-		//flock(fd, LOCK_EX) ;
 		read_s(sizeof(type), (char*)&type, fd);
 		read_s(sizeof(tid), (char*)&tid, fd);	
 		read_s(sizeof(addr), (char*)&addr, fd);
-		//flock(fd, LOCK_UN) ;
 		
-		update_list(type,tid,addr);
-		
-		if(type != -1 && addr != 0x0 && tid != -1){
+		update(type,tid,addr);
+			
+		//if(type != -1 && addr != 0x0 && tid != -1){
 			//printf("%d %ld %p\n",type,tid,addr);
-		}
+		//}
 	}
 }
