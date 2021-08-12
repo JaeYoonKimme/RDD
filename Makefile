@@ -8,6 +8,7 @@ all:
 	gcc -o ./test/test4 ./test/test4.c -pthread
 	gcc -o ./test/test5 ./test/test5.c -pthread
 	gcc -o ./test/test6 ./test/test6.c -pthread
+	gcc -o ./test/test7 ./test/test7.c -pthread
 
 clean: 
 	rm ./test/test1 
@@ -16,5 +17,6 @@ clean:
 	rm ./test/test4 
 	rm ./test/test5
 	rm ./test/test6
+	rm ./test/test7
 	rm ddchck 
 	rm ddmon.so

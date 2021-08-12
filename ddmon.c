@@ -58,11 +58,14 @@ pthread_mutex_lock (pthread_mutex_t *mutex)
 	write_s(sizeof(tid), (char*)tid, fd);
 	write_s(sizeof(mutex), (char*)&mutex, fd);
 
+	
+	//int result = pthread_mutex_lock_origin(mutex);
 
 	flock(fd, LOCK_UN) ;
 
 	close(fd);
 
+	//return result;
 	return pthread_mutex_lock_origin(mutex);
 }
 
