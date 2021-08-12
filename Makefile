@@ -1,7 +1,7 @@
 all:
 	gcc -shared -fPIC -o ddmon.so ddmon.c -ldl
 	gcc -o ddchck ddchck.c -pthread
-	gcc -o ./test/test1 ./test/test1.c -pthread
+	gcc -g -o ./test/test1 ./test/test1.c -pthread
 	gcc -o ./test/test2 ./test/test2.c -pthread
 	gcc -o ./test/test3 ./test/test3.c -pthread
 	gcc -o ./test/test4 ./test/test4.c -pthread

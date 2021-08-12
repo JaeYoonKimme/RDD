@@ -45,27 +45,35 @@ pthread_mutex_lock (pthread_mutex_t *mutex)
  			exit(1);
  		}
 	}
+	int fd = open(".ddtrace",O_WRONLY | O_SYNC);
 
 	printf("pthread_lock [%ld] : %p\n",pthread_self(),mutex);
 
-	int fd = open(".ddtrace",O_WRONLY | O_SYNC);
-
 	flock(fd, LOCK_EX) ;
-	int type = 1;
-	write_s(sizeof(type),(char*)&type, fd);
 
+	int type = 1;
 	long tid = pthread_self();
+
+	//backtrace test
+	void * buf[10];
+	int size = backtrace (buf, 10);
+
+	char ** strings;
+	strings = backtrace_symbols (buf, size);
+	printf("------------backtrace info----------\n");
+	for(int i = 0; i< size; i++){
+		printf("%s\n",strings[i]);
+	}
+	printf("------------------------------------\n");
+	//
+
+	write_s(sizeof(type),(char*)&type, fd);
 	write_s(sizeof(tid), (char*)tid, fd);
 	write_s(sizeof(mutex), (char*)&mutex, fd);
-
-	
-	//int result = pthread_mutex_lock_origin(mutex);
 
 	flock(fd, LOCK_UN) ;
 
 	close(fd);
-
-	//return result;
 	return pthread_mutex_lock_origin(mutex);
 }
 
