@@ -1,5 +1,6 @@
 all:
 	gcc -shared -fPIC -o ddmon.so ddmon.c -ldl
+	gcc -shared -fPIC -o ddtect.so ddtect.c -ldl
 	gcc -o ddchck ddchck.c -pthread
 	gcc -g -o ./test/test1 ./test/test1.c -pthread
 	gcc -g -o ./test/test2 ./test/test2.c -pthread
@@ -19,3 +20,4 @@ clean:
 	rm ./test/test7
 	rm ddchck 
 	rm ddmon.so
+	rm ddtect.so
