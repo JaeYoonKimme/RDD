@@ -168,6 +168,28 @@ release(long tid, void* mutex)
 	}	
 }
 
+void
+find_line_and_print(long addr)
+{
+	char command[50];
+	snprintf(command, 50, "addr2line -e %s %lx",target_path,addr);
+	
+	FILE * fp = NULL;
+	if((fp = popen(command,"r"))==NULL){
+		perror("Popen error :");
+	}
+	
+	char result[128];
+	
+	printf("\n********Cyclic Dead Lock Occured********\n");
+	while(fgets(result,128, fp) != NULL){
+		printf("%s",result);
+	}
+	printf("\n");
+
+	pclose(fp);	
+}
+
 int
 find_cycle(node * cur)
 {
@@ -200,21 +222,19 @@ find_cycle(node * cur)
 }
 
 void
-check_deadlock()
+check_deadlock(long addr)
 {
 	for(int i = 0; i < 10; i++){
 		if(m_list[i] != 0x0 && find_cycle(m_list[i]) == 1){
-			printf("\n********Cyclic Dead Lock Occured********\n");
-			//exit(1);
+			find_line_and_print(addr);
+			exit(1);
 			break;
 		}
 	}
-	printf("info :\n");
-	printf("%s\n",target_path);	
 }
 
 void 
-update(int type, long tid, void* mutex)
+update(int type, long tid, void* mutex, long addr)
 {
 	//LOCK
 	if(type == 1){
@@ -231,7 +251,7 @@ update(int type, long tid, void* mutex)
 		print_thread_list();		
 		print_mutex_list();						
 		print_edges();
-		check_deadlock();
+		check_deadlock(addr);
 		printf("---------------------------------------------------------------------------\n\n\n");
 	}
 
@@ -295,13 +315,14 @@ main(int argc, char ** argv)
 
 	while (1){
 		int type = -1;
-		void * addr = 0x0;
+		void * mutex = 0x0;
 		long tid = -1;
-		
+		long addr = 0;		
 		read_s(sizeof(type), (char*)&type, fd);
-		read_s(sizeof(tid), (char*)&tid, fd);	
+		read_s(sizeof(tid), (char*)&tid, fd);
+		read_s(sizeof(mutex), (char*)&mutex, fd);	
 		read_s(sizeof(addr), (char*)&addr, fd);
 		
-		update(type,tid,addr);		
+		update(type,tid,mutex,addr);		
 	}
 }
