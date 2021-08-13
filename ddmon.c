@@ -86,7 +86,7 @@ pthread_mutex_lock (pthread_mutex_t *mutex)
 
 	close(fd);
 	
-	printf("pthread_lock [%ld] : %p\n",pthread_self(),mutex);
+	//printf("pthread_lock [%ld] : %p\n",pthread_self(),mutex);
 	return pthread_mutex_lock_origin(mutex);	
 }
 
@@ -136,7 +136,7 @@ pthread_mutex_unlock (pthread_mutex_t *mutex)
 
  	close(fd);
 
- 	printf("pthread_unlock [%ld] : %p\n",pthread_self(),mutex);
+ 	//printf("pthread_unlock [%ld] : %p\n",pthread_self(),mutex);
 	return pthread_mutex_unlock_origin(mutex);
 }
 

@@ -29,6 +29,57 @@ typedef struct _thread thread;
 node * m_list[10] = { 0x0 };
 thread * t_list[10] = { 0x0 } ;
 
+void
+print_thread_list()
+{       
+        printf("\n<print thread list>\n");
+        
+        for(int i = 0; i< 10; i++){
+                if(t_list[i] != 0x0){
+                        printf("thread %d : %ld -> mutex list : ",i, t_list[i] -> tid);
+                        
+                        for(int j = 0; j < t_list[i] -> n_mutex; j++){
+                                printf("%p ",t_list[i] -> mutex_list[j] -> mutex);
+                        }
+                        printf("\n");
+                }
+        }
+}
+
+void
+print_mutex_list()
+{
+        printf("\n<print mutex list>\n");
+
+        for(int i =0; i < 10; i++){
+                if(m_list[i] != 0x0){
+                        printf("mutex %d : %p\n",i,m_list[i]->mutex);
+                }
+        }
+}
+
+void
+print_edges()
+{
+        printf("\n<print edge status>\n");
+        for(int i = 0; i < 10; i++){
+                if(m_list[i] != 0x0 && m_list[i] -> next != 0x0){
+                        printf("edge %p -> %p \n", m_list[i] -> mutex , m_list[i] -> next -> mutex);
+                }
+        }
+}
+
+void
+print(char* type, long tid, void * mutex, long addr)
+{
+	printf("\n\n---------------------------------------------------------------------------\n");
+	printf("Given data set : [%s] %ld -> %p\n",type,tid,mutex);
+	print_thread_list();
+	print_mutex_list();
+	print_edges();
+}
+
+
 thread *
 thread_check_and_create(long tid)
 {
@@ -75,46 +126,6 @@ mutex_check_and_create(void * mutex)
 			tmp -> visited = 0;
 			m_list[i] = tmp;
 			return tmp;
-		}
-	}
-}
-
-void
-print_thread_list()
-{
-	printf("\n<print thread list>\n");
-
-	for(int i = 0; i< 10; i++){
-		if(t_list[i] != 0x0){
-			printf("thread %d : %ld -> mutex list : ",i, t_list[i] -> tid);
-			
-			for(int j = 0; j < t_list[i] -> n_mutex; j++){
-				printf("%p ",t_list[i] -> mutex_list[j] -> mutex);
-			}
-			printf("\n");
-		}
-	}	
-}
-
-void
-print_mutex_list()
-{
-	printf("\n<print mutex list>\n");
-
-	for(int i =0; i < 10; i++){
-		if(m_list[i] != 0x0){
-			printf("mutex %d : %p\n",i,m_list[i]->mutex);
-		}
-	}	
-}
-
-void
-print_edges()
-{
-	printf("\n<print edge status>\n");
-	for(int i = 0; i < 10; i++){
-		if(m_list[i] != 0x0 && m_list[i] -> next != 0x0){
-			printf("edge %p -> %p \n", m_list[i] -> mutex , m_list[i] -> next -> mutex);
 		}
 	}
 }
@@ -245,26 +256,19 @@ update(int type, long tid, void* mutex, long addr)
 		make_edge(cur_thread);	
 		cur_thread -> n_mutex += 1;	
 		cur_thread -> mutex_list = (node **)realloc(cur_thread -> mutex_list, sizeof(node) * cur_thread -> n_mutex);
-
-		printf("---------------------------------------------------------------------------\n");
-		printf("Given data set : [LOCK] %ld -> %p\n",tid,mutex);
-		print_thread_list();		
-		print_mutex_list();						
-		print_edges();
+		
+		//DEBUG
+		print("LOCK",tid,mutex,addr);
+	
 		check_deadlock(addr);
-		printf("---------------------------------------------------------------------------\n\n\n");
 	}
 
 	//UNLOCK
 	if(type == 0){
 		release(tid,mutex);
-
-		printf("---------------------------------------------------------------------------\n");
-		printf("Given data set : [UNLOCK] %ld -> %p\n",tid,mutex);
-		print_thread_list();
-		print_mutex_list();
-		print_edges();
-		printf("---------------------------------------------------------------------------\n\n\n");
+		
+		//DEBUG
+		print("UNLOCK",tid,mutex,addr);
 	}			
 }
 
