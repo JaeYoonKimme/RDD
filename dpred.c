@@ -1,21 +1,17 @@
-#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
-#include <dlfcn.h>
-#include <execinfo.h>
-#include <unistd.h>
+#include <errno.h>
 #include <fcntl.h>
+#include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <sys/file.h>
-#include <errno.h>
-#include <string.h>
 #include <pthread.h>
-#include <limits.h>
+#include <signal.h>
+#include <string.h>
 
-static pthread_mutex_t chanel_lock;
 
-char * target_path = 0x0;
+char * target_path;
 
 struct _node {
 	void * mutex; 
@@ -33,40 +29,33 @@ struct _thread {
 
 typedef struct _thread thread;
 
+struct _edge {
+	long tid;
+	void ** mutex_list;
+	int n_mutex;
+	node * start;
+	node * end;
+};
+
+typedef struct _edge edge;
+
 node * m_list[10] = { 0x0 };
 thread * t_list[10] = { 0x0 } ;
 
-void
-get_target_path ()
+edge ** e_list;
+int n_edge = 0;
+
+char ** line_info;
+int cnt_line = 0;
+
+int
+read_s (size_t len, char * data, int fd)
 {
-	void * buf[10];
-	int size = backtrace (buf, 10);
-	char ** strings;
-	if( (strings = backtrace_symbols (buf, size)) == NULL){
-		perror("BackTrace Error : \n");
-		exit(2);
+	size_t s;
+	while(len > 0 && (s= read(fd, data, len)) > 0){
+		data +=s;
+		len -=s;
 	}
-
-	char * tok = strtok(strings[2], "(");
-
-	target_path = tok;
-}
-
-long
-addr_parse ()
-{
-	void * buf[10];
-	int size = backtrace (buf, 10);
-	char ** strings;
-	
-	if( (strings = backtrace_symbols (buf, size)) == NULL){
-		perror("BackTrace Error : \n");
-		exit(2);
-	}
-
-	char * tok = strtok(strings[2], "+");
-	tok = strtok(NULL, ")");
-	return strtol(tok,NULL,16) - 5;
 }
 
 void
@@ -123,35 +112,30 @@ print(char* type, long tid, void * mutex, long addr)
 thread *
 thread_check_and_create(long tid)
 {
-	thread * tmp = 0x0;
 	for(int i = 0; i < 10; i++){
 		if(t_list[i] != 0x0 && t_list[i] -> tid == tid){
-			tmp = t_list[i];
-			break;
+			return t_list[i];
+			
 		}
 	}
 
-	if(tmp == 0x0){
-		for(int i = 0; i < 10; i++){
-			if(t_list[i] == 0x0){
-				tmp = (thread*) malloc(sizeof(thread));
-				tmp -> tid = tid;
-				tmp -> n_mutex = 0;
-				t_list[i] = tmp;
-				tmp -> mutex_list = (node **) malloc(sizeof(node*));
-				tmp -> mutex_list[tmp -> n_mutex] = 0x0;
-				break;	
-			}
+	for(int i = 0; i < 10; i++){
+		if(t_list[i] == 0x0){
+			thread * new_thread = (thread*) malloc(sizeof(thread));
+			new_thread -> tid = tid;
+			new_thread -> n_mutex = 0;
+			t_list[i] = new_thread;
+			new_thread -> mutex_list = (node **) malloc(sizeof(node*));
+			new_thread -> mutex_list[new_thread -> n_mutex] = 0x0;
+			
+			return new_thread;
 		}
 	}
-	
-	return tmp;
 }	
 
 node *
 mutex_check_and_create(void * mutex)
 {
-	node * tmp;
 	for(int i = 0; i < 10; i++){
 		if(m_list[i] != 0x0 && m_list[i] -> mutex == mutex){
 			return m_list[i];
@@ -160,12 +144,13 @@ mutex_check_and_create(void * mutex)
 
 	for(int i = 0; i < 10; i++){
 		if(m_list[i] == 0x0){
-			tmp = (node*) malloc(sizeof(node));
-			tmp -> mutex = mutex;
-			tmp -> next = 0x0;
-			tmp -> visited = 0;
-			m_list[i] = tmp;
-			return tmp;
+			node * new_node;
+			new_node = (node*) malloc(sizeof(node));
+			new_node -> mutex = mutex;
+			new_node -> next = 0x0;
+			new_node -> visited = 0;
+			m_list[i] = new_node;
+			return new_node;
 		}
 	}
 }
@@ -178,6 +163,12 @@ make_edge(thread * cur_thread)
 		int end = cur_thread -> n_mutex;
 
 		cur_thread -> mutex_list[start] -> next = cur_thread -> mutex_list[end];
+
+		//TODO
+		//make edge struct and save it.
+		//thread -> mutex_list의 0 부터(not from start) end 까지 타고오면서, mutex 정보들을 하나씩 저장해야 한다.
+		edge * new_edge = (edge*)malloc(sizeof(edge)); //program 종료시에 free
+		new_edge -> tid = cur_thread -> tid;
 	}	
 }
 
@@ -198,12 +189,14 @@ release(long tid, void* mutex)
 
 	for(int i = 0; i < cur_thread -> n_mutex ; i++){
 		if(cur_thread -> mutex_list[i] == cur_node){
+			/*
 			if(i - 1 >= 0 && cur_thread -> mutex_list[i - 1] != 0x0){
 				cur_thread->mutex_list[i - 1] -> next = cur_thread -> mutex_list[i] -> next;
 			}
+			*/
 				
 			cur_thread -> mutex_list[i] = 0x0;
-			cur_node -> next = 0x0;
+			//cur_node -> next = 0x0;
 
 			node ** new = (node **) malloc (sizeof(node) * (cur_thread -> n_mutex - 1));
 			for(int j = 0, index = 0; j< cur_thread -> n_mutex; j++){
@@ -220,24 +213,35 @@ release(long tid, void* mutex)
 }
 
 void
-find_line_and_print(long addr)
+find_line(long addr)
 {
-	char command[128];
-	snprintf(command, 128, "addr2line -e %s %lx",target_path,addr);
+	char command[50];
+	snprintf(command, 50, "addr2line -e %s %lx",target_path,addr);
 	
-	FILE * fp;
+	FILE * fp = NULL;
 	if((fp = popen(command,"r"))==NULL){
 		perror("Popen error :");
 	}
 	
-	char result[128];
-	
-	printf("\n********Cyclic Dead Lock Occured********\n");
-	while(fgets(result,128, fp) != NULL){
-		printf("%s",result);
+	char buf[512];
+	char * data = buf;
+	int len = 0;
+	for(int s; s = fread(data, 1, sizeof(char), fp); ){
+		len += s;
+		data += s;
 	}
-	printf("\n");
 
+	char * line = strndup(buf,len);
+	cnt_line += 1;
+	line_info = (char**)realloc(line_info,cnt_line * sizeof(char*));
+	line_info[cnt_line - 1] = 0x0;
+
+	for(int i = 0; i < cnt_line; i++){
+		if(line_info[i] != 0x0 && strcmp(line_info[i],line)){
+			continue;
+		}
+		line_info[i] = line;
+	}
 	pclose(fp);	
 }
 
@@ -247,21 +251,21 @@ find_cycle(node * cur)
 	int found = 0;
 	int count = 0;
 
-	for(node * tmp = cur; tmp != 0x0; tmp = tmp -> next){
-		if(tmp -> visited == 1){
+	for(node * itr = cur; itr != 0x0; itr = itr -> next){
+		if(itr -> visited == 1){
 			found = 1;
 			count += 1;
 			break;
 		}
 
 		else{
-			tmp -> visited = 1;
+			itr -> visited = 1;
 		}
 	}
 
-	for(node * tmp = cur; tmp != 0x0; tmp = tmp -> next){
-		if(tmp -> visited == 1){
-			tmp -> visited = 0;
+	for(node * itr = cur; itr != 0x0; itr = itr -> next){
+		if(itr -> visited == 1){
+			itr -> visited = 0;
 			count -= 1;
 			
 			if(count == 0){
@@ -277,8 +281,8 @@ check_deadlock(long addr)
 {
 	for(int i = 0; i < 10; i++){
 		if(m_list[i] != 0x0 && find_cycle(m_list[i]) == 1){
-			find_line_and_print(addr);
-			exit(1);
+			find_line(addr);
+
 			break;
 		}
 	}
@@ -300,91 +304,83 @@ update(int type, long tid, void* mutex, long addr)
 		//DEBUG
 		print("LOCK",tid,mutex,addr);
 	
-		//check_deadlock(addr);
+		check_deadlock(addr);
 	}
 
 	//UNLOCK
 	if(type == 0){
 		release(tid,mutex);
-		
+				
 		//DEBUG
 		print("UNLOCK",tid,mutex,addr);
 	}			
 }
 
-int
-pthread_mutex_lock (pthread_mutex_t *mutex)
+void
+handler(int sig)
 {
-	if(target_path == 0x0){
-		get_target_path();
+	if(sig == SIGINT){
+		if(cnt_line == 0){
+			printf("\nNo DeadLock predicted\n");
+			exit(0);
+		}
+		printf("\n-----DeadLock Prediction Result-----\n");
+		for(int i =0; i< cnt_line; i++){
+			printf("%s\n",line_info[i]);
+		}
+		exit(0);
 	}
-	
-	int (*pthread_mutex_lock_origin)(pthread_mutex_t *mutex);
-	int (*pthread_mutex_unlock_origin)(pthread_mutex_t *mutex);
-	pthread_t (*pthread_self)(void);
-	char * error;
-	
-	pthread_mutex_lock_origin = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-	if((error = dlerror()) != 0x0){
-		perror("dlsym error (lock)");
-		exit(1);
-	}
-	pthread_mutex_unlock_origin = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-	if((error = dlerror()) != 0x0){
-		perror("dlsym error (unlock)");
-		exit(1);
-	}
-	pthread_self = dlsym(RTLD_NEXT, "pthread_self");
-	if((error = dlerror()) != 0x0){
-		perror("dlsym error (self)");
-		exit(1);
-	}
-
-	int type = 1;
-	long tid = pthread_self();
-	long addr = addr_parse();
-
-	pthread_mutex_lock_origin(&chanel_lock);		
-	update(type,tid,mutex,addr);
-	pthread_mutex_unlock_origin(&chanel_lock);
-
-	
-	//printf("pthread_lock [%ld] : %p\n",pthread_self(),mutex);
-	return pthread_mutex_lock_origin(mutex);	
 }
 
-
-
-int
-pthread_mutex_unlock (pthread_mutex_t *mutex)
+void
+get_arg(int argc, char ** argv)
 {
-	int (*pthread_mutex_lock_origin)(pthread_mutex_t *mutex);
-	int (*pthread_mutex_unlock_origin)(pthread_mutex_t *mutex);
-	pthread_t (*pthread_self)(void);
-	char * error;
-	pthread_mutex_lock_origin = dlsym(RTLD_NEXT, "pthread_mutex_lock");
-	if((error = dlerror()) != 0x0){
+	if(argc != 2){
+		printf("Error : Input must be one program path\n");
 		exit(1);
 	}
-	pthread_mutex_unlock_origin = dlsym(RTLD_NEXT, "pthread_mutex_unlock");
-	if((error = dlerror()) != 0x0){
+
+	struct stat st;
+	if(stat(argv[1],&st) == -1){
+		perror("Error : ");
 		exit(1);
 	}
-	pthread_self = dlsym(RTLD_NEXT, "pthread_self");
-	if((error = dlerror()) != 0x0){
-		exit(1);	
-	}
-	
-	int type = 0;
-	long tid = pthread_self();
-	long addr = addr_parse();	
 
-	pthread_mutex_lock_origin(&chanel_lock);
-	update(type,tid,mutex,addr);
-	pthread_mutex_unlock_origin(&chanel_lock);
-
-
- 	//printf("pthread_unlock [%ld] : %p\n",pthread_self(),mutex);
-	return pthread_mutex_unlock_origin(mutex);
+	target_path = argv[1];	
 }
+
+int 
+main(int argc, char ** argv)
+{
+	get_arg(argc,argv);
+
+	signal(SIGINT, handler);
+
+	if(mkfifo(".ddtrace",0666)){
+		if(errno != EEXIST){
+			perror("fail to open fifo: ");
+			exit(1);
+		}
+	}
+
+	int fd = open(".ddtrace", O_RDWR | O_SYNC);
+	if(fd == -1){
+		perror("Error :\n");
+		exit(1);
+	}	
+
+	while (1){
+		int type = -1;
+		void * mutex = 0x0;
+		long tid = -1;
+		long addr = 0;		
+		read_s(sizeof(type), (char*)&type, fd);
+		read_s(sizeof(tid), (char*)&tid, fd);
+		read_s(sizeof(mutex), (char*)&mutex, fd);	
+		read_s(sizeof(addr), (char*)&addr, fd);
+		
+		update(type,tid,mutex,addr);		
+	}
+}
+
 

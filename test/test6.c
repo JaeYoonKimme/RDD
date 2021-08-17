@@ -47,6 +47,7 @@ main ()
 	pthread_t thread1, thread2;
 
 	pthread_create(&thread1, NULL, worker1, NULL);
+	sleep(1);
 	pthread_create(&thread2, NULL, worker2, NULL);
 
 	pthread_join(thread1,NULL);

@@ -330,3 +330,9 @@ main(int argc, char ** argv)
 		update(type,tid,mutex,addr);		
 	}
 }
+
+//HOW TO PREDICT?
+// Graph 알고리즘에서 release 하는 부분을 없앤다.
+// <False Positive Cases>
+//1. Single thread cycle -> 엣지 정보를 저장해서 사이클 디텍션에 반영한다. 한쓰레드에서 만든 사이클은 데드락이 아님.
+
