@@ -31,10 +31,11 @@ typedef struct _thread thread;
 
 struct _edge {
 	long tid;
-	void ** mutex_list;
-	int n_mutex;
+	void ** mutex_history;
+	int n_history;
 	node * start;
 	node * end;
+	//long addr;
 };
 
 typedef struct _edge edge;
@@ -90,13 +91,26 @@ print_mutex_list()
 void
 print_edges()
 {
-        printf("\n<print edge status>\n");
-        for(int i = 0; i < 10; i++){
+	printf("\n<print edge status>\n");
+        /*
+		for(int i = 0; i < 10; i++){
                 if(m_list[i] != 0x0 && m_list[i] -> next != 0x0){
                         printf("edge %p -> %p \n", m_list[i] -> mutex , m_list[i] -> next -> mutex);
                 }
         }
-}
+		*/
+
+		//for(int i = n_history
+	for(int i = 0; i < n_edge; i++){
+		edge * cur = e_list[i];
+		printf("edge %p -> %p (TID : %ld)\n",cur -> start -> mutex, cur -> end -> mutex, cur -> tid);
+		printf("mutex history : ");
+		for(int j = 0; j < cur -> n_history; j++){
+			printf("%p ",cur -> mutex_history[j]);
+		}
+		printf("\n");
+	}
+}	
 
 void
 print(char* type, long tid, void * mutex, long addr)
@@ -169,6 +183,21 @@ make_edge(thread * cur_thread)
 		//thread -> mutex_list의 0 부터(not from start) end 까지 타고오면서, mutex 정보들을 하나씩 저장해야 한다.
 		edge * new_edge = (edge*)malloc(sizeof(edge)); //program 종료시에 free
 		new_edge -> tid = cur_thread -> tid;
+		new_edge -> start = cur_thread -> mutex_list[start];
+		new_edge -> end = cur_thread -> mutex_list[end];
+		//new_edge -> addr = addr;
+
+		new_edge -> mutex_history = (void**) malloc(sizeof(void*) * (cur_thread -> n_mutex));
+		new_edge -> n_history = cur_thread -> n_mutex;
+
+		for(int i = 0; i < cur_thread->n_mutex; i++){
+			new_edge -> mutex_history[i] = cur_thread -> mutex_list[i] -> mutex;
+		}
+
+		e_list = (edge**)realloc(e_list, sizeof(edge) * (n_edge+1) );
+		e_list[n_edge] = new_edge;
+		n_edge += 1;
+		
 	}	
 }
 
@@ -248,6 +277,9 @@ find_line(long addr)
 int
 find_cycle(node * cur)
 {
+	//TODO
+	// 1.같은 tid edge 로 이뤄진 사이클 거르기. -> 사이클을 찾는 동안 엣지정보를 저장하고,그걸 가지고 판별....
+	// 2.gate lock 거르기. 
 	int found = 0;
 	int count = 0;
 
