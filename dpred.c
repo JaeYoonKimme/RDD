@@ -92,15 +92,6 @@ void
 print_edges()
 {
 	printf("\n<print edge status>\n");
-        /*
-		for(int i = 0; i < 10; i++){
-                if(m_list[i] != 0x0 && m_list[i] -> next != 0x0){
-                        printf("edge %p -> %p \n", m_list[i] -> mutex , m_list[i] -> next -> mutex);
-                }
-        }
-		*/
-
-		//for(int i = n_history
 	for(int i = 0; i < n_edge; i++){
 		edge * cur = e_list[i];
 		printf("edge %p -> %p (TID : %ld)\n",cur -> start -> mutex, cur -> end -> mutex, cur -> tid);
@@ -178,14 +169,10 @@ make_edge(thread * cur_thread)
 
 		cur_thread -> mutex_list[start] -> next = cur_thread -> mutex_list[end];
 
-		//TODO
-		//make edge struct and save it.
-		//thread -> mutex_list의 0 부터(not from start) end 까지 타고오면서, mutex 정보들을 하나씩 저장해야 한다.
 		edge * new_edge = (edge*)malloc(sizeof(edge)); //program 종료시에 free
 		new_edge -> tid = cur_thread -> tid;
 		new_edge -> start = cur_thread -> mutex_list[start];
 		new_edge -> end = cur_thread -> mutex_list[end];
-		//new_edge -> addr = addr;
 
 		new_edge -> mutex_history = (void**) malloc(sizeof(void*) * (cur_thread -> n_mutex));
 		new_edge -> n_history = cur_thread -> n_mutex;
@@ -275,23 +262,69 @@ find_line(long addr)
 }
 
 int
+find_other_edge(edge e, long tid)
+{
+	for(int i = 0; i < n_edge; i++){
+		if(e.start == e_list[i] -> start && e.end == e_list[i] -> end && tid != e_list[i] -> tid){
+			return 1;
+		}
+	}
+	return 0;
+}
+int 
+single_thread_check(node * arr[], int count)
+{
+	int found = 0;
+	edge list[10];
+	for(int i = 0; i < count; i ++){
+		list[i].start = arr[i];
+		list[i].end = arr[i + 1];
+	}
+	for(int i = 0; i < n_edge; i ++){
+		if(e_list[i] -> start == list[0].start && e_list[i] -> end == list[0].end){
+			long tid = e_list[i] -> tid;
+			for(int j = 1; j < count ; j++){
+				if(find_other_edge(list[j],tid)){
+					return 0;
+				}
+			}
+		}
+	}
+	return 1;
+}
+
+int 
+gate_lock_check()
+{
+
+}
+
+
+int
 find_cycle(node * cur)
 {
-	//TODO
-	// 1.같은 tid edge 로 이뤄진 사이클 거르기. -> 사이클을 찾는 동안 엣지정보를 저장하고,그걸 가지고 판별....
-	// 2.gate lock 거르기. 
 	int found = 0;
 	int count = 0;
+	node * arr[50];
 
 	for(node * itr = cur; itr != 0x0; itr = itr -> next){
 		if(itr -> visited == 1){
+			arr[count] = itr;
 			found = 1;
-			count += 1;
 			break;
 		}
 
 		else{
-			itr -> visited = 1;
+			arr[count] = itr;
+			itr -> visited = 1;		
+			count += 1;
+		}
+	}
+
+	if(found){
+		//이렇게 하면 안됨.. 모든 엣지의 조합마다 체크해야한다
+		if(single_thread_check(arr,count+1) && gate_lock_check()){	
+			found = 0;
 		}
 	}
 
@@ -305,6 +338,8 @@ find_cycle(node * cur)
 			}
 		}
 	}
+
+
 	return found;
 }
 
